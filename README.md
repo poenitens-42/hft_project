@@ -65,11 +65,3 @@ g++ -O2 -std=c++17 -I/usr/include/bpf \
 sudo ./xdp/feed_loader
 ```
 
-## Status
-- [x] XDP feed handler — live packet interception
-- [x] Ring buffer — zero-copy kernel→userspace
-- [x] Feed loader — message decoding + latency measurement
-- [ ] Lock-free order book
-- [ ] Exchange simulator (ITCH 5.0 format)
-- [ ] rdtsc latency benchmarking
-- [ ] DPDK software mode layer
