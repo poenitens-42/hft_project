@@ -1,5 +1,5 @@
 # HFT_Experimental
-An experimental XDP layer (DPDK awareness order book is being implementd simultaneously) 
+XDP/eBPF feed handler in SKB mode
 
 A low-latency market data feed handler and order book engine, 
 built to explore kernel-bypass networking techniques used in 
