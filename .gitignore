@@ -1,3 +1,6 @@
 *.o
 feed_loader
 bench/
+xdp/feed_loader
+tools/feed_sim
+xdp/feed_xsk
