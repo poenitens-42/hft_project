@@ -15,8 +15,17 @@ xdp/feed_loader: xdp/feed_loader.cpp xdp/feed_proto.h
 tools/feed_sim: tools/feed_sim.cpp xdp/feed_proto.h
 	$(CXX) $(CXXFLAGS) $< -o $@
 
-clean:
-	rm -f xdp/*.o xdp/feed_loader tools/feed_sim
+# AF_XDP receiver; needs libxdp-dev (kept out of `all` so the base build has no extra dependency)
+xsk: xdp/xsk_redirect.o xdp/feed_xsk
 
-.PHONY: all clean
+xdp/xsk_redirect.o: xdp/xsk_redirect.c xdp/feed_proto.h
+	$(CLANG) $(BPF_CFLAGS) -c $< -o $@
+
+xdp/feed_xsk: xdp/feed_xsk.cpp xdp/feed_proto.h
+	$(CXX) $(CXXFLAGS) $< -o $@ -lxdp -lbpf
+
+clean:
+	rm -f xdp/*.o xdp/feed_loader xdp/feed_xsk tools/feed_sim
+
+.PHONY: all xsk clean
 

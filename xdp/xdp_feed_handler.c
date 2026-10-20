@@ -87,6 +87,14 @@ int xdp_feed_handler(struct xdp_md *ctx)
         return XDP_PASS;
     }
 
+    /* Optional sender timestamp trailer (see wire_trailer). */
+    __u64 send_ns = 0;
+    if (udp_len >= sizeof(*udp) + sizeof(*msg) + sizeof(struct wire_trailer)) {
+        struct wire_trailer *tr = (void *)(msg + 1);
+        if ((void *)(tr + 1) <= data_end)
+            send_ns = tr->send_ns;
+    }
+
     stats->bytes_processed += (data_end - data);
 
     /* ── Send to userspace via ring buffer ─────────── */
@@ -101,6 +109,7 @@ int xdp_feed_handler(struct xdp_md *ctx)
     ev->price     = bpf_ntohl(msg->price);
     ev->quantity  = bpf_ntohl(msg->quantity);
     ev->timestamp = bpf_ktime_get_ns(); /* CLOCK_MONOTONIC */
+    ev->send_ns   = send_ns;
     bpf_ringbuf_submit(ev, RB_FLAGS);
 
     /*

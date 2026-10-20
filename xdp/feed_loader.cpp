@@ -28,6 +28,7 @@ static inline uint64_t now_ns()
 
 struct Ctx {
     std::vector<uint64_t> lat;
+    std::vector<uint64_t> e2e; /* sender stamp -> userspace, only if packet had a trailer */
     size_t cap = 0;
     uint64_t count = 0;
     bool verbose = false;
@@ -43,6 +44,7 @@ static int handle_event(void *vctx, void *data, size_t size)
     uint64_t lat = t >= ev->timestamp ? t - ev->timestamp : 0;
     c->count++;
     if (c->lat.size() < c->cap) c->lat.push_back(lat);
+    if (ev->send_ns && t >= ev->send_ns && c->e2e.size() < c->cap) c->e2e.push_back(t - ev->send_ns);
 
     if (c->verbose)
         printf("MSG type=%c order=%u side=%c price=%.4f qty=%u latency=%luns\n",
@@ -51,12 +53,12 @@ static int handle_event(void *vctx, void *data, size_t size)
     return 0;
 }
 
-static void print_percentiles(std::vector<uint64_t> &v)
+static void print_percentiles(const char *what, std::vector<uint64_t> &v)
 {
-    if (v.empty()) { puts("no samples"); return; }
+    if (v.empty()) { printf("%s: no samples\n", what); return; }
     std::sort(v.begin(), v.end());
     auto pct = [&](double p) { return v[std::min(v.size() - 1, (size_t)(p * v.size()))]; };
-    printf("latency XDP stamp -> userspace (ns), n=%zu\n", v.size());
+    printf("%s (ns), n=%zu\n", what, v.size());
     printf("  p50=%lu p90=%lu p99=%lu p99.9=%lu max=%lu\n",
            (unsigned long)pct(0.50), (unsigned long)pct(0.90),
            (unsigned long)pct(0.99), (unsigned long)pct(0.999),
@@ -112,6 +114,7 @@ int main(int argc, char **argv)
     }
     if (!iface) { usage(argv[0]); return 2; }
     ctx.lat.reserve(ctx.cap);
+    ctx.e2e.reserve(ctx.cap);
 
     int ifindex = if_nametoindex(iface);
     if (!ifindex) { perror("if_nametoindex"); return 1; }
@@ -148,7 +151,8 @@ int main(int argc, char **argv)
 
     ring_buffer__consume(rb);
     printf("\nmessages received: %lu\n", (unsigned long)ctx.count);
-    print_percentiles(ctx.lat);
+    print_percentiles("latency XDP stamp -> userspace", ctx.lat);
+    if (!ctx.e2e.empty()) print_percentiles("latency sender stamp -> userspace", ctx.e2e);
     print_stats(stats_fd);
 
     ring_buffer__free(rb);

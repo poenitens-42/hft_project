@@ -17,6 +17,13 @@ struct wire_msg {
     __u32 quantity;
 } __attribute__((packed));
 
+/* Optional trailer right after wire_msg: the sender's CLOCK_MONOTONIC time in
+ * ns, host byte order. Only meaningful when sender and receiver are on the
+ * same machine (the simulator). A datagram without it is still valid. */
+struct wire_trailer {
+    __u64 send_ns;
+} __attribute__((packed));
+
 /* What the XDP program pushes to userspace via the ring buffer.
  * Host byte order; timestamp is bpf_ktime_get_ns() (CLOCK_MONOTONIC). */
 struct feed_event {
@@ -26,6 +33,7 @@ struct feed_event {
     __u32 price;
     __u32 quantity;
     __u64 timestamp;
+    __u64 send_ns;  /* from wire_trailer, 0 if the packet had none */
 } __attribute__((packed));
 
 /* Per-CPU counters kept by the XDP program. */

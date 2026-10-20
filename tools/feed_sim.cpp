@@ -20,15 +20,24 @@ static uint64_t now_ns()
 
 static const int MAX_BATCH = 1024;
 
+/* On the wire: wire_msg, optionally followed by a wire_trailer (sender timestamp). */
+struct sim_pkt {
+    wire_msg m;
+    wire_trailer t;
+} __attribute__((packed));
+
 int main(int argc, char **argv)
 {
     const char *ip = argc > 1 ? argv[1] : "127.0.0.1";
     long count = argc > 2 ? atol(argv[2]) : 100000;
     long pps   = argc > 3 ? atol(argv[3]) : 10000; /* 0 = as fast as possible */
     int batch  = argc > 4 ? atoi(argv[4]) : 32;    /* datagrams per sendmmsg call */
-    if (argc > 5 || (argc > 1 && !strcmp(argv[1], "-h")) || count <= 0 || pps < 0 ||
+    int ts     = argc > 5 ? atoi(argv[5]) : 0;     /* 1 = append sender timestamp */
+    if (argc > 6 || (argc > 1 && !strcmp(argv[1], "-h")) || count <= 0 || pps < 0 ||
         batch < 1 || batch > MAX_BATCH) {
-        fprintf(stderr, "usage: %s [dest_ip=127.0.0.1] [count=100000] [pps=10000, 0=max] [batch=32, 1..%d]\n",
+        fprintf(stderr, "usage: %s [dest_ip=127.0.0.1] [count=100000] [pps=10000, 0=max] [batch=32, 1..%d] [ts=0|1]\n"
+                "  ts=1 appends an 8-byte sender timestamp so receivers can report end-to-end latency\n"
+                "  (the stamp is taken when a batch is built, so use batch=1 for latency tests)\n",
                 argv[0], MAX_BATCH);
         return 2;
     }
@@ -40,12 +49,12 @@ int main(int argc, char **argv)
     dst.sin_port = htons(FEED_PORT);
     if (inet_pton(AF_INET, ip, &dst.sin_addr) != 1) { fprintf(stderr, "bad ip\n"); return 2; }
 
-    static wire_msg msgs[MAX_BATCH];
+    static sim_pkt msgs[MAX_BATCH];
     static iovec iov[MAX_BATCH];
     static mmsghdr hdr[MAX_BATCH];
     for (int j = 0; j < batch; j++) {
         iov[j].iov_base = &msgs[j];
-        iov[j].iov_len = sizeof(wire_msg);
+        iov[j].iov_len = ts ? sizeof(sim_pkt) : sizeof(wire_msg);
         hdr[j].msg_hdr = {};
         hdr[j].msg_hdr.msg_name = &dst;
         hdr[j].msg_hdr.msg_namelen = sizeof(dst);
@@ -64,11 +73,12 @@ int main(int argc, char **argv)
         int n = (int)((count - sent) < batch ? (count - sent) : batch);
         for (int j = 0; j < n; j++) {
             seed = seed * 1664525u + 1013904223u; /* deterministic LCG */
-            msgs[j].msg_type = "ACT"[seed % 3];
-            msgs[j].order_id = htonl((uint32_t)(sent + j) + 1);
-            msgs[j].side     = (seed >> 8) & 1 ? 'B' : 'S';
-            msgs[j].price    = htonl(1000000 + (seed >> 12) % 200); /* 100.0000 + 0..199 ticks */
-            msgs[j].quantity = htonl(1 + (seed >> 20) % 1000);
+            msgs[j].m.msg_type = "ACT"[seed % 3];
+            msgs[j].m.order_id = htonl((uint32_t)(sent + j) + 1);
+            msgs[j].m.side     = (seed >> 8) & 1 ? 'B' : 'S';
+            msgs[j].m.price    = htonl(1000000 + (seed >> 12) % 200); /* 100.0000 + 0..199 ticks */
+            msgs[j].m.quantity = htonl(1 + (seed >> 20) % 1000);
+            if (ts) msgs[j].t.send_ns = now_ns();
         }
         int done = 0; /* sendmmsg may send fewer than asked; resend the rest */
         while (done < n) {
@@ -82,7 +92,8 @@ int main(int argc, char **argv)
     }
 
     double secs = (double)(now_ns() - start) / 1e9;
-    printf("sent %ld messages (%zu bytes each) to %s:%d in %.3f s\n", sent, sizeof(wire_msg), ip, FEED_PORT, secs);
+    printf("sent %ld messages (%zu bytes each) to %s:%d in %.3f s\n", sent,
+           ts ? sizeof(sim_pkt) : sizeof(wire_msg), ip, FEED_PORT, secs);
     printf("achieved %.0f msg/s (target %s), batch=%d, %ld sendmmsg calls\n",
            secs > 0 ? (double)sent / secs : 0.0, pps ? "paced" : "max", batch, calls);
     return 0;
