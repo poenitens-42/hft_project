@@ -30,11 +30,10 @@ used in high-frequency trading infrastructure.
 
 ### Userspace Feed Loader (C++)
 - Consumes messages from BPF ring buffer
-- Loads and attaches the XDP object itself (no hardcoded map ids); busy-polls the ring buffer
-- Reports p50/p90/p99/p99.9/max of XDP-stamp→userspace latency (both sides use CLOCK_MONOTONIC) plus XDP counters on exit; `-v` prints each message
-- Order book integration is a separate project and not part of this repo yet
+- Measures kernel→userspace latency per message
+- Currently prints each parsed message; order book integration not yet implemented
 
-### Order Book (C++) — separate project, not in this repo
+### Order Book (C++) — not yet started
 Planned:
 - L2/L3 limit order book, cache-aligned price level arrays
 - No dynamic allocation in hot path
@@ -59,7 +58,3 @@ sudo ./xdp/feed_loader lo
 ./tools/feed_sim 127.0.0.1 100000 10000
 # Ctrl-C terminal 1 to print latency percentiles and XDP counters
 ```
-
-Wire format (`xdp/feed_proto.h`): 14-byte big-endian message per UDP datagram, one message per packet.
-Latency here is measured from an XDP-time stamp, not NIC arrival, and in generic mode that is already after the kernel allocated the packet.
-
